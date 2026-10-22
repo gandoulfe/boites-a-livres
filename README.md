@@ -4,7 +4,7 @@ Petite app web (un seul `index.html`, sans build) qui localise la boîte à livr
 
 ## Fichiers
 
-- `index.html` : l'app (carte Leaflet + OpenStreetMap, regroupement des marqueurs, recherche d'adresse via la Base Adresse Nationale)
+- `index.html` : l'app (carte Leaflet + fond vectoriel OpenFreeMap (clair / sombre), regroupement des marqueurs, recherche d'adresse via la Base Adresse Nationale)
 - `data/boites.json` : 19 080 boîtes `[lat, lon, id, adresse]`, issues de l'export GPX de boites-a-livres.fr (données OpenStreetMap, licence ODbL)
 - `update_data.py` : retélécharge l'export et régénère `data/boites.json`
 - `manifest.webmanifest`, `icon.svg` : pour « Ajouter à l'écran d'accueil »
