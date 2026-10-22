@@ -174,6 +174,23 @@ button, input { font: inherit; color: inherit; }
 .list .a { font-size: 14px; font-weight: 500; overflow-wrap: anywhere; }
 .list .d { font-weight: 700; font-size: 14px; font-variant-numeric: tabular-nums; color: var(--accent-text); }
 
+/* Fiche pliée : une seule ligne, la carte reste dégagée */
+.grab { touch-action: none; }
+.peek { display: none; grid-template-columns: auto 1fr auto; align-items: center; gap: 14px; padding: 0 12px 12px 18px; cursor: pointer; touch-action: none; }
+.pdist { font-size: 30px; font-weight: 800; letter-spacing: -.04em; line-height: 1; font-variant-numeric: tabular-nums; background: var(--grad); -webkit-background-clip: text; background-clip: text; color: transparent; }
+.pdist small { font-size: .5em; font-weight: 700; margin-left: 2px; }
+.pmeta { min-width: 0; }
+.paddr { font-weight: 600; font-size: 15px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.peta { color: var(--muted); font-size: 13px; }
+.pgo { width: 48px; height: 48px; border-radius: 50%; background: var(--grad); color: var(--on-accent); display: grid; place-items: center; box-shadow: 0 6px 18px color-mix(in srgb, var(--a2) 35%, transparent); }
+.pgo svg { width: 20px; height: 20px; }
+.card.mini .peek { display: grid; }
+.card.mini .inner, .card.mini .more { display: none; }
+.card.mini .empty { padding-top: 0; padding-bottom: 14px; }
+.card.mini .empty > :not(.cta):not(.status) { display: none; }
+.card { transition: border-radius .2s ease; }
+.card.mini { border-radius: 24px; }
+
 .empty { padding: 4px 20px 20px; display: grid; gap: 14px; }
 .empty .kicker { font-size: 13px; font-weight: 600; color: var(--accent-text); letter-spacing: .02em; }
 .empty h1 { margin: 0; font-size: 28px; line-height: 1.08; font-weight: 800; letter-spacing: -.035em; text-wrap: balance; }
@@ -225,7 +242,7 @@ button, input { font: inherit; color: inherit; }
 
 <div class="sheet">
   <div class="card glass" id="card">
-    <button class="grab" id="grab" type="button" aria-label="Afficher ou masquer la liste"></button>
+    <button class="grab" id="grab" type="button" aria-label="Plier ou déplier la fiche" aria-expanded="true"></button>
     <div class="empty" id="empty">
       <span class="kicker"><span id="count">19 080</span> boîtes à livres en France</span>
       <h1>Trouve la boîte à livres la plus proche</h1>
@@ -237,6 +254,13 @@ button, input { font: inherit; color: inherit; }
       <span class="status" id="status" role="status"></span>
     </div>
     <div id="detail" hidden>
+      <div class="peek" id="peek" role="button" tabindex="0" aria-label="Déplier la fiche">
+        <div class="pdist" id="pdist"></div>
+        <div class="pmeta"><div class="paddr" id="paddr"></div><div class="peta" id="peta"></div></div>
+        <a class="pgo" id="pgo" target="_blank" rel="noopener" aria-label="Y aller">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14M13 6l6 6-6 6"/></svg>
+        </a>
+      </div>
       <div class="inner">
         <div class="eyebrow">
           <span class="chip hot"><span class="dot"></span><span id="tagLabel">La plus proche</span></span>
@@ -401,6 +425,8 @@ function render() {
     $('gmaps').href = L2.g; $('amaps').href = L2.a; $('waze').href = L2.w;
     $('goBtn').href = IS_APPLE ? L2.a : L2.g;
     $('goLabel').textContent = walking ? 'Y aller à pied' : 'Y aller';
+    $('pdist').innerHTML = `${v}<small>${u}</small>`;
+    $('peta').textContent = `${eta(m)} · vers le ${CARD[Math.round(br / 45) % 8]}`;
     if (line) line.setLatLngs([[origin.lat, origin.lon], [b[0], b[1]]]);
     else line = L.polyline([[origin.lat, origin.lon], [b[0], b[1]]], { color: css('--a2'), weight: 4, opacity: .9, dashArray: '1 9', lineCap: 'round' }).addTo(map);
   } else {
@@ -410,7 +436,10 @@ function render() {
     const L2 = navLinks(b, true);
     $('gmaps').href = L2.g; $('amaps').href = L2.a; $('waze').href = L2.w;
     $('goBtn').href = IS_APPLE ? L2.a : L2.g; $('goLabel').textContent = 'Y aller';
+    $('pdist').textContent = ''; $('peta').textContent = 'Localise-toi pour la distance';
   }
+  $('paddr').textContent = b[3] || `Boîte n° ${b[2]}`;
+  $('pgo').href = $('goBtn').href;
   $('more').hidden = !origin;
   $('list').innerHTML = '';
   for (const i of nearest) {
@@ -485,8 +514,26 @@ $('dirBtn').onclick = async () => {
   } catch (e) {}
 };
 
-// Poignée : ouvre / ferme la liste
-$('grab').onclick = () => { if (!$('more').hidden) $('more').open = !$('more').open; };
+// --- Fiche pliable : poignée (tap ou glisser), tap sur la ligne pliée, pliage auto quand on déplace la carte
+function setMini(on) {
+  $('card').classList.toggle('mini', on);
+  $('grab').setAttribute('aria-expanded', String(!on));
+}
+const isMini = () => $('card').classList.contains('mini');
+let dragY = null, dragged = false;
+for (const el of [$('grab'), $('peek')]) {
+  el.addEventListener('pointerdown', e => { if (e.target.closest('.pgo')) return; dragY = e.clientY; dragged = false; });
+}
+window.addEventListener('pointermove', e => {
+  if (dragY === null) return;
+  const dy = e.clientY - dragY;
+  if (Math.abs(dy) > 24) { dragged = true; setMini(dy > 0); dragY = null; }
+});
+window.addEventListener('pointerup', () => { dragY = null; });
+$('grab').addEventListener('click', () => { if (!dragged) setMini(!isMini()); dragged = false; });
+$('peek').addEventListener('click', e => { if (e.target.closest('.pgo') || dragged) { dragged = false; return; } setMini(false); });
+$('peek').addEventListener('keydown', e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); setMini(false); } });
+map.on('dragstart', () => setMini(true));
 
 // --- Recherche d'adresse (Base Adresse Nationale)
 let qTimer = null;
@@ -527,7 +574,7 @@ fetch('data/boites.json').then(r => r.json()).then(data => {
   $('count').textContent = boxes.length.toLocaleString('fr-FR');
   const list = boxes.map((b, i) => {
     const m = L.marker([b[0], b[1]], { icon: ICON, title: b[3] });
-    m.on('click', () => setSelected(i));
+    m.on('click', () => { setSelected(i); setMini(false); });
     markers.set(i, m);
     return m;
   });
